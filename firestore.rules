@@ -1,0 +1,49 @@
+rules_version = '2';
+
+// ============================================================
+//  قواعد أمان Firestore — انسخها إلى: Firebase Console › Firestore › Rules
+// ============================================================
+//  • الزبائن: قراءة المنتجات المعروضة فقط (active == true)
+//  • المدير: قراءة وكتابة كل شيء — فقط للحسابات المدرجة UID الخاص بها أدناه
+//
+//  ⚠️ مهم جداً: استبدل PUT_YOUR_ADMIN_UID_HERE بـ UID حسابك
+//  (Firebase Console › Authentication › Users › عمود User UID)
+//  بدون هذه الخطوة، أي شخص يُنشئ حساباً يمكنه التعديل!
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid in ['PUT_YOUR_ADMIN_UID_HERE'];
+    }
+
+    // التحقق من شكل بيانات المنتج قبل الحفظ
+    function isValidProduct(d) {
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.sku is string && d.sku.size() > 0 && d.sku.size() <= 40
+        && d.category in ['men', 'women', 'kids']
+        && d.season in ['summer', 'winter', 'all']
+        && d.price is number && d.price >= 0
+        && d.piecesPerPack is number && d.piecesPerPack >= 1
+        && d.moq is number && d.moq >= 1
+        && d.stock is number && d.stock >= 0
+        && d.sizes is list && d.sizes.size() <= 30
+        && d.images is list && d.images.size() <= 10
+        && d.active is bool;
+    }
+
+    match /products/{productId} {
+      allow read: if resource.data.active == true || isAdmin();
+      allow create: if isAdmin() && isValidProduct(request.resource.data);
+      allow update: if isAdmin() && isValidProduct(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // رفض أي شيء آخر افتراضياً
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
