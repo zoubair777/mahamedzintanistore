@@ -16,12 +16,6 @@ export const SEASONS = {
   all:    { label: 'كل المواسم', icon: '🔄' },
 };
 
-export const SIZE_PRESETS = {
-  'بالغين': ['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'],
-  'أرقام':  ['38', '40', '42', '44', '46', '48', '50'],
-  'أطفال':  ['2-3', '4-5', '6-7', '8-9', '10-11', '12-13'],
-  'أخرى':   ['فري سايز'],
-};
 
 /* ---------- الحماية من XSS: كل نص من قاعدة البيانات يمر من هنا ---------- */
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -30,8 +24,6 @@ export const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[
 /* ---------- التنسيق ---------- */
 const nf = new Intl.NumberFormat('ar-EG-u-nu-latn', { maximumFractionDigits: 2 });
 export const formatNumber = (n) => nf.format(Number(n) || 0);
-export const formatPrice = (n) => `${formatNumber(n)} ${storeConfig.currency}`;
-export const hasPrice = (p) => storeConfig.showPrices && Number(p.price) > 0;
 
 /** توحيد الحروف العربية لبحث أذكى: (أ إ آ ← ا) (ة ← ه) (ى ← ي) وحذف التشكيل */
 export function normalizeArabic(str = '') {
@@ -78,11 +70,6 @@ export function toast(message, type = 'info', ms = 3200) {
     el.classList.remove('is-in');
     el.addEventListener('transitionend', () => el.remove(), { once: true });
   }, ms);
-}
-
-/* ---------- واتساب ---------- */
-export function whatsappLink(text) {
-  return `https://wa.me/${storeConfig.whatsapp}?text=${encodeURIComponent(text)}`;
 }
 
 /** رابط مباشر للمنتج داخل الكتالوج (يفتح نافذة المنتج تلقائياً) */

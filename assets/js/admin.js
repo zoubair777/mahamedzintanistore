@@ -1,19 +1,18 @@
 /**
  * ============================================================
- *  admin.js — منطق لوحة التحكم
+ *  admin.js — منطق لوحة التحكم (خاصة بصاحب المحل فقط)
  * ============================================================
- *  • تسجيل الدخول عبر Firebase Auth (أو حساب تجريبي)
- *  • إحصائيات سريعة + بحث وفلترة
- *  • جدول المنتجات: تعديل السعر/المخزون مباشرة، إظهار/إخفاء، نسخ، حذف
- *  • نموذج إضافة/تعديل مع رفع صور متعدد (ضغط + شريط تقدم)
+ *  • قبل ربط Firebase: اللوحة مقفلة تماماً ولا يمكن لأحد الدخول
+ *  • بعد الربط: تسجيل دخول عبر Firebase Auth، والكتابة محمية بقواعد الأمان (UID)
+ *  • إضافة/تعديل منتج: الصور + الاسم + الكود + التصنيف + الموسم
+ *  • جدول المنتجات: إظهار/إخفاء، تعديل، نسخ، حذف
  */
-import { storeConfig } from './firebase-config.js';
 import {
   mode, listProducts, addProduct, updateProduct, deleteProduct, sanitizeProduct,
   signIn, signOut, onAuthChange, sendPasswordReset, authErrorMessage, uploadImage,
 } from './store.js';
 import {
-  CATEGORIES, SEASONS, SIZE_PRESETS, escapeHtml as e, formatPrice, formatNumber,
+  CATEGORIES, SEASONS, escapeHtml as e, formatNumber,
   normalizeArabic, debounce, optimizeImg, toast, compressImage, $, $$,
 } from './utils.js';
 
@@ -21,7 +20,6 @@ import {
 let products = [];
 let editingId = null;         // null = منتج جديد
 let formImages = [];          // [{ key, url, preview, progress, status: 'done'|'uploading'|'error' }]
-let selectedSizes = [];
 let formDirty = false;
 const MAX_IMAGES = 10;
 
@@ -40,11 +38,13 @@ const ICON = {
 init();
 
 function init() {
-  $$('[data-store-name]').forEach((el) => (el.textContent = storeConfig.name));
+  // قبل ربط Firebase لا توجد أي طريقة للدخول — نعرض شاشة القفل فقط
   if (mode === 'demo') {
-    $('#demoNotice').classList.remove('hidden');
-    $('#modeBadge').classList.remove('hidden');
+    $('#bootScreen').classList.add('hidden');
+    $('#lockedView').classList.remove('hidden');
+    return;
   }
+
   bindLogin();
   bindApp();
   bindForm();
@@ -118,7 +118,7 @@ function bindLogin() {
 async function refresh() {
   $('#tbody').innerHTML = Array.from({ length: 5 }, () => `
     <tr><td><div class="skeleton w-12 h-[60px] !rounded-lg"></div></td>
-    <td colspan="6"><div class="skeleton h-4 w-1/2 mb-2"></div><div class="skeleton h-3 w-1/4"></div></td></tr>`).join('');
+    <td colspan="4"><div class="skeleton h-4 w-1/2 mb-2"></div><div class="skeleton h-3 w-1/4"></div></td></tr>`).join('');
   try {
     products = await listProducts({ includeHidden: true });
     renderAll();
@@ -131,14 +131,11 @@ async function refresh() {
 
 function renderAll() { renderStats(); renderTable(); }
 
-function isLow(p) { return Number(p.stock) <= storeConfig.lowStockThreshold; }
-
 function renderStats() {
   const active = products.filter((p) => p.active !== false).length;
   $('#stTotal').textContent = formatNumber(products.length);
   $('#stActive').textContent = formatNumber(active);
   $('#stHidden').textContent = formatNumber(products.length - active);
-  $('#stLow').textContent = formatNumber(products.filter(isLow).length);
 }
 
 function getFiltered() {
@@ -149,16 +146,8 @@ function getFiltered() {
     if (cat !== 'all' && p.category !== cat) return false;
     if (status === 'active' && p.active === false) return false;
     if (status === 'hidden' && p.active !== false) return false;
-    if (status === 'low' && !isLow(p)) return false;
-    return !q || normalizeArabic(`${p.name} ${p.sku} ${p.fabric}`).includes(q);
+    return !q || normalizeArabic(`${p.name} ${p.sku}`).includes(q);
   });
-}
-
-function stockBadge(p) {
-  const s = Number(p.stock);
-  if (s === 0) return '<span class="badge badge-danger">نفد</span>';
-  if (isLow(p)) return '<span class="badge badge-warn">منخفض</span>';
-  return '';
 }
 
 function renderTable() {
@@ -179,23 +168,16 @@ function renderTable() {
         <div class="flex flex-wrap gap-1">
           <span class="badge badge-soft">${e(CATEGORIES[p.category]?.label || '')}</span>
           <span class="badge badge-soft">${SEASONS[p.season]?.icon || ''} ${e(SEASONS[p.season]?.label || '')}</span>
-          <span class="badge badge-soft">${formatNumber(p.piecesPerPack)} ق/باكيت</span>
+          <span class="badge badge-soft">${formatNumber(p.images?.length || 0)} صور</span>
         </div>
-      </td>
-      <td data-col="price" data-label="السعر">
-        <input class="inline-input" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(p.price) || 0}" data-field="price" aria-label="سعر ${e(p.name)}" />
-      </td>
-      <td data-col="stock" data-label="المخزون">
-        <input class="inline-input !w-20" type="number" min="0" step="1" inputmode="numeric" value="${Number(p.stock) || 0}" data-field="stock" aria-label="مخزون ${e(p.name)}" />
-        ${stockBadge(p)}
       </td>
       <td data-col="status">
         <label class="switch" title="${p.active === false ? 'مخفي' : 'معروض'}">
-          <input type="checkbox" data-toggle ${p.active === false ? '' : 'checked'} aria-label="إظهار ${e(p.name)} في الكتالوج" /><span></span>
+          <input type="checkbox" data-toggle ${p.active === false ? '' : 'checked'} aria-label="إظهار ${e(p.name)} في المعرض" /><span></span>
         </label>
       </td>
       <td data-col="actions" class="whitespace-nowrap text-left">
-        <a class="btn btn-ghost btn-sm btn-icon" href="./#p=${encodeURIComponent(p.id)}" target="_blank" title="عرض في الكتالوج">${ICON.link}</a>
+        <a class="btn btn-ghost btn-sm btn-icon" href="./#p=${encodeURIComponent(p.id)}" target="_blank" title="عرض في المعرض">${ICON.link}</a>
         <button class="btn btn-ghost btn-sm btn-icon" data-act="edit" title="تعديل">${ICON.edit}</button>
         <button class="btn btn-ghost btn-sm btn-icon" data-act="dup" title="نسخ كمنتج جديد">${ICON.copy}</button>
         <button class="btn btn-ghost btn-sm btn-icon text-red-600" data-act="del" title="حذف">${ICON.trash}</button>
@@ -204,8 +186,7 @@ function renderTable() {
 }
 
 function bindApp() {
-  const rerender = debounce(renderTable, 150);
-  $('#adminSearch').addEventListener('input', rerender);
+  $('#adminSearch').addEventListener('input', debounce(renderTable, 150));
   $('#adminCat').addEventListener('change', renderTable);
   $('#adminStatus').addEventListener('change', renderTable);
   $('#addBtn').addEventListener('click', () => openForm());
@@ -216,63 +197,29 @@ function bindApp() {
   // أزرار الإجراءات
   tbody.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-act]'); if (!btn) return;
-    const id = btn.closest('tr').dataset.id;
-    const p = products.find((x) => x.id === id);
+    const p = products.find((x) => x.id === btn.closest('tr').dataset.id);
     if (btn.dataset.act === 'edit') openForm(p);
     if (btn.dataset.act === 'dup') openForm({ ...p, id: null, sku: '', name: `${p.name} (نسخة)` }, { duplicate: true });
     if (btn.dataset.act === 'del') confirmDelete(p);
   });
 
-  // التعديل المباشر للسعر/المخزون
+  // إظهار/إخفاء المنتج
   tbody.addEventListener('change', async (ev) => {
     const input = ev.target;
-    const id = input.closest('tr')?.dataset.id;
+    if (!input.matches('[data-toggle]')) return;
+    const id = input.closest('tr').dataset.id;
     const p = products.find((x) => x.id === id);
-    if (!p) return;
-
-    if (input.matches('[data-field]')) {
-      const field = input.dataset.field;
-      const value = field === 'stock' ? Math.max(0, Math.floor(Number(input.value) || 0)) : Math.max(0, Number(input.value) || 0);
-      input.value = value;
-      if (value === Number(p[field])) return;
-      input.classList.remove('saved', 'err'); input.classList.add('saving');
-      try {
-        await updateProduct(id, { [field]: value });
-        p[field] = value;
-        input.classList.replace('saving', 'saved');
-        setTimeout(() => input.classList.remove('saved'), 1200);
-        renderStats();
-        if (field === 'stock') {
-          const cell = input.closest('td');
-          cell.querySelector('.badge')?.remove();
-          cell.insertAdjacentHTML('beforeend', stockBadge(p));
-        }
-      } catch (err) {
-        console.error(err);
-        input.classList.replace('saving', 'err');
-        input.value = p[field];
-        toast(authErrorMessage(err), 'error');
-      }
+    const active = input.checked;
+    try {
+      await updateProduct(id, { active });
+      p.active = active;
+      input.closest('tr').classList.toggle('is-hidden', !active);
+      renderStats();
+      toast(active ? 'المنتج معروض الآن في المعرض' : 'تم إخفاء المنتج عن الزبائن', 'success');
+    } catch (err) {
+      input.checked = !active;
+      toast(authErrorMessage(err), 'error');
     }
-
-    if (input.matches('[data-toggle]')) {
-      const active = input.checked;
-      try {
-        await updateProduct(id, { active });
-        p.active = active;
-        input.closest('tr').classList.toggle('is-hidden', !active);
-        renderStats();
-        toast(active ? 'المنتج معروض الآن في الكتالوج' : 'تم إخفاء المنتج من الكتالوج', 'success');
-      } catch (err) {
-        input.checked = !active;
-        toast(authErrorMessage(err), 'error');
-      }
-    }
-  });
-
-  // Enter في الحقل المباشر = حفظ
-  tbody.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' && ev.target.matches('[data-field]')) ev.target.blur();
   });
 
   // إغلاق النوافذ
@@ -321,8 +268,7 @@ function confirmDelete(p) {
 
 /* ---------------- نسخة احتياطية ---------------- */
 function exportJSON() {
-  const data = JSON.stringify(products.map(({ id, ...rest }) => ({ id, ...rest })), null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(products, null, 2)], { type: 'application/json' });
   const a = Object.assign(document.createElement('a'), {
     href: URL.createObjectURL(blob),
     download: `catalog-backup-${new Date().toISOString().slice(0, 10)}.json`,
@@ -337,8 +283,7 @@ function exportJSON() {
  * ========================================================= */
 function openForm(p = null, { duplicate = false } = {}) {
   editingId = p && !duplicate ? p.id : null;
-  const f = $('#productForm');
-  f.reset();
+  $('#productForm').reset();
   $('#formError').textContent = '';
   $('#pdTitle').textContent = editingId ? 'تعديل المنتج' : (duplicate ? 'نسخ منتج' : 'منتج جديد');
   $('#saveBtn').textContent = editingId ? 'حفظ التعديلات' : 'إضافة المنتج';
@@ -346,25 +291,14 @@ function openForm(p = null, { duplicate = false } = {}) {
   const d = p || {};
   $('#fName').value = d.name || '';
   $('#fSku').value = d.sku || '';
-  $('#fFabric').value = d.fabric || '';
   $('#fCategory').value = d.category || 'men';
   $('#fSeason').value = d.season || 'all';
-  $('#fPrice').value = d.price ?? '';
-  $('#fPack').value = d.piecesPerPack ?? 12;
-  $('#fMoq').value = d.moq ?? 1;
-  $('#fStock').value = d.stock ?? 10;
-  $('#fColors').value = (d.colors || []).join('، ');
   $('#fActive').checked = d.active !== false;
-  $('#fDesc').value = d.description || '';
 
-  selectedSizes = [...(d.sizes || [])];
   formImages = (d.images || []).map((url) => ({ key: uid(), url, preview: url, progress: 100, status: 'done' }));
-
   if (!editingId && !$('#fSku').value) $('#fSku').value = generateSku($('#fCategory').value);
 
-  renderSizes();
   renderImages();
-  updatePackPreview();
   formDirty = false;
   showDialog($('#productDialog'));
   $('#productDialog .modal-body').scrollTop = 0;
@@ -377,29 +311,6 @@ function generateSku(cat) {
   let sku;
   do { sku = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`; } while (used.has(sku));
   return sku;
-}
-
-function updatePackPreview() {
-  const price = Number($('#fPrice').value) || 0;
-  const pack = Math.max(1, Number($('#fPack').value) || 1);
-  const moq = Math.max(1, Number($('#fMoq').value) || 1);
-  $('#packPreview').innerHTML = price > 0
-    ? `💡 سعر الباكيت: <strong>${formatPrice(price * pack)}</strong> — أقل طلب: <strong>${formatNumber(moq * pack)} قطعة</strong> بقيمة <strong>${formatPrice(price * pack * moq)}</strong>`
-    : `💡 أقل طلب: <strong>${formatNumber(moq * pack)} قطعة</strong> — السعر سيظهر للزبون "عند الطلب"`;
-}
-
-/* ---------------- المقاسات ---------------- */
-function renderSizes() {
-  const presetAll = Object.values(SIZE_PRESETS).flat();
-  const custom = selectedSizes.filter((s) => !presetAll.includes(s));
-  const group = (label, sizes) => `
-    <div class="flex flex-wrap items-center gap-1.5">
-      <span class="text-xs text-slate-500 w-12 shrink-0">${e(label)}</span>
-      ${sizes.map((s) => `<button type="button" class="size-toggle" data-size="${e(s)}" aria-pressed="${selectedSizes.includes(s)}">${e(s)}</button>`).join('')}
-    </div>`;
-  $('#sizePresets').innerHTML =
-    Object.entries(SIZE_PRESETS).map(([k, v]) => group(k, v)).join('') +
-    (custom.length ? group('مخصص', custom) : '');
 }
 
 /* ---------------- الصور ---------------- */
@@ -430,8 +341,7 @@ async function handleFiles(fileList) {
     formImages.push(entry);
     renderImages();
     try {
-      // في الوضع التجريبي نصغّر أكثر لأن مساحة المتصفح محدودة (~5MB)
-      const compressed = await compressImage(file, mode === 'demo' ? 700 : 1600, mode === 'demo' ? 0.75 : 0.85);
+      const compressed = await compressImage(file);
       entry.url = await uploadImage(compressed, (pct) => {
         entry.progress = pct;
         const tile = $(`.img-tile[data-key="${entry.key}"]`);
@@ -455,46 +365,20 @@ async function handleFiles(fileList) {
 
 function bindForm() {
   const form = $('#productForm');
-
-  form.addEventListener('input', (ev) => {
-    formDirty = true;
-    if (['fPrice', 'fPack', 'fMoq'].includes(ev.target.id)) updatePackPreview();
-  });
+  form.addEventListener('input', () => { formDirty = true; });
 
   $('#fCategory').addEventListener('change', () => {
     // تحديث بادئة الكود تلقائياً لو كان مولّداً تلقائياً ولم يُعدّل
-    const sku = $('#fSku').value;
-    if (!editingId && /^(SH|BN|KD|PR)-\d{4}$/.test(sku)) $('#fSku').value = generateSku($('#fCategory').value);
+    if (!editingId && /^(SH|BN|KD|PR)-\d{4}$/.test($('#fSku').value)) $('#fSku').value = generateSku($('#fCategory').value);
   });
   $('#genSku').addEventListener('click', () => { $('#fSku').value = generateSku($('#fCategory').value); formDirty = true; });
 
-  // المقاسات
-  $('#sizePresets').addEventListener('click', (ev) => {
-    const b = ev.target.closest('[data-size]'); if (!b) return;
-    const s = b.dataset.size;
-    selectedSizes = selectedSizes.includes(s) ? selectedSizes.filter((x) => x !== s) : [...selectedSizes, s];
-    b.setAttribute('aria-pressed', String(selectedSizes.includes(s)));
-    formDirty = true;
-  });
-  const addCustomSize = () => {
-    const v = $('#customSize').value.trim();
-    if (!v) return;
-    if (!selectedSizes.includes(v)) selectedSizes.push(v);
-    $('#customSize').value = '';
-    renderSizes();
-    formDirty = true;
-  };
-  $('#addSize').addEventListener('click', addCustomSize);
-  $('#customSize').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); addCustomSize(); } });
-
-  // الصور: اختيار + سحب وإفلات
+  // الصور: اختيار + سحب وإفلات + لصق
   $('#fileInput').addEventListener('change', (ev) => { handleFiles(ev.target.files); ev.target.value = ''; });
   const dz = $('#dropzone');
   ['dragenter', 'dragover'].forEach((t) => dz.addEventListener(t, (ev) => { ev.preventDefault(); dz.classList.add('drag'); }));
   ['dragleave', 'drop'].forEach((t) => dz.addEventListener(t, (ev) => { ev.preventDefault(); dz.classList.remove('drag'); }));
   dz.addEventListener('drop', (ev) => handleFiles(ev.dataTransfer.files));
-
-  // لصق صورة من الحافظة (Ctrl+V) داخل النموذج
   $('#productDialog').addEventListener('paste', (ev) => {
     const files = [...(ev.clipboardData?.files || [])];
     if (files.length) { ev.preventDefault(); handleFiles(files); }
@@ -502,8 +386,7 @@ function bindForm() {
 
   $('#imgGrid').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-img]'); if (!b) return;
-    const key = b.closest('.img-tile').dataset.key;
-    const i = formImages.findIndex((x) => x.key === key);
+    const i = formImages.findIndex((x) => x.key === b.closest('.img-tile').dataset.key);
     if (b.dataset.img === 'remove') formImages.splice(i, 1);
     if (b.dataset.img === 'cover') formImages.unshift(...formImages.splice(i, 1));
     formDirty = true;
@@ -517,45 +400,37 @@ async function onSubmit(ev) {
   ev.preventDefault();
   const errEl = $('#formError');
   errEl.textContent = '';
+  const fail = (msg, focusSel) => { errEl.textContent = msg; if (focusSel) $(focusSel).focus(); };
 
-  // التحقق من الصحة
   const name = $('#fName').value.trim();
   const sku = $('#fSku').value.trim().toUpperCase();
   if (!name) return fail('اسم الموديل مطلوب', '#fName');
   if (!sku) return fail('كود الصنف مطلوب', '#fSku');
   if (products.some((p) => p.sku === sku && p.id !== editingId)) return fail('كود الصنف مستخدم لمنتج آخر', '#fSku');
-  if (!(Number($('#fPack').value) >= 1)) return fail('عدد القطع في الباكيت يجب أن يكون 1 أو أكثر', '#fPack');
   if (formImages.some((i) => i.status === 'uploading')) return fail('انتظر حتى ينتهي رفع الصور');
 
+  const images = formImages.filter((i) => i.status === 'done').map((i) => i.url);
+  if (!images.length && !confirm('لم تُضف أي صورة للمنتج. هل تريد الحفظ على أي حال؟')) return;
+
+  // نحافظ على أي بيانات قديمة للمنتج (مثل الوصف) ونحدّث الحقول المعروضة فقط
+  const existing = products.find((p) => p.id === editingId) || {};
   const data = sanitizeProduct({
-    name, sku,
-    fabric: $('#fFabric').value,
+    ...existing,
+    name, sku, images,
     category: $('#fCategory').value,
     season: $('#fSeason').value,
-    price: $('#fPrice').value,
-    piecesPerPack: $('#fPack').value,
-    moq: $('#fMoq').value,
-    stock: $('#fStock').value,
-    sizes: selectedSizes,
-    colors: $('#fColors').value.split(/[,،]/),
     active: $('#fActive').checked,
-    description: $('#fDesc').value,
-    images: formImages.filter((i) => i.status === 'done').map((i) => i.url),
   });
-
-  if (!data.images.length && !confirm('لم تُضف أي صورة. المنتجات بدون صور تقل مبيعاتها كثيراً. هل تريد الحفظ على أي حال؟')) return;
 
   setBusy($('#saveBtn'), true, 'جارٍ الحفظ...');
   try {
     if (editingId) {
       await updateProduct(editingId, data);
-      const i = products.findIndex((p) => p.id === editingId);
-      products[i] = { ...products[i], ...data, updatedAt: Date.now() };
+      Object.assign(existing, data, { updatedAt: Date.now() });
       toast('تم حفظ التعديلات ✓', 'success');
     } else {
-      const created = await addProduct(data);
-      products.unshift(created);
-      toast('تمت إضافة المنتج إلى الكتالوج ✓', 'success');
+      products.unshift(await addProduct(data));
+      toast('تمت إضافة المنتج إلى المعرض ✓', 'success');
     }
     formDirty = false;
     $('#productDialog').close();
@@ -565,11 +440,6 @@ async function onSubmit(ev) {
     fail(err.message && !err.code ? err.message : authErrorMessage(err));
   } finally {
     setBusy($('#saveBtn'), false);
-  }
-
-  function fail(msg, focusSel) {
-    errEl.textContent = msg;
-    if (focusSel) $(focusSel).focus();
   }
 }
 

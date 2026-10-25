@@ -84,8 +84,6 @@ export function sanitizeProduct(p) {
  *  الوضع التجريبي (localStorage)
  * ========================================================= */
 const DEMO_KEY = 'wc_demo_products_v2';
-const DEMO_AUTH = 'wc_demo_auth';
-const demoListeners = new Set();
 
 /** صورة SVG بديلة جميلة (لا تحتاج إنترنت) للمنتجات التجريبية */
 function placeholder(hue, kind = 'shirt') {
@@ -202,25 +200,15 @@ export async function deleteProduct(id) {
 
 /* ---------- المصادقة ---------- */
 export async function signIn(email, password) {
-  if (mode === 'demo') {
-    if (email.trim().toLowerCase() === 'admin@demo.com' && password === 'demo1234') {
-      sessionStorage.setItem(DEMO_AUTH, '1');
-      demoListeners.forEach((cb) => cb({ email: 'admin@demo.com', uid: 'demo' }));
-      return;
-    }
-    throw Object.assign(new Error('demo'), { code: 'auth/invalid-credential' });
-  }
+  // قبل ربط Firebase لوحة التحكم مقفلة تماماً — لا يوجد أي حساب يمكنه الدخول
+  if (mode === 'demo') throw Object.assign(new Error('not-configured'), { code: 'app/not-configured' });
   const { auth, a } = await getAuthBundle();
   await a.setPersistence(auth, a.browserLocalPersistence);
   await a.signInWithEmailAndPassword(auth, email.trim(), password);
 }
 
 export async function signOut() {
-  if (mode === 'demo') {
-    sessionStorage.removeItem(DEMO_AUTH);
-    demoListeners.forEach((cb) => cb(null));
-    return;
-  }
+  if (mode === 'demo') return;
   const { auth, a } = await getAuthBundle();
   await a.signOut(auth);
 }
@@ -233,11 +221,7 @@ export async function sendPasswordReset(email) {
 
 /** مراقبة حالة الدخول: cb(user | null) */
 export async function onAuthChange(cb) {
-  if (mode === 'demo') {
-    demoListeners.add(cb);
-    cb(sessionStorage.getItem(DEMO_AUTH) ? { email: 'admin@demo.com', uid: 'demo' } : null);
-    return () => demoListeners.delete(cb);
-  }
+  if (mode === 'demo') { cb(null); return () => {}; }
   const { auth, a } = await getAuthBundle();
   return a.onAuthStateChanged(auth, cb);
 }
@@ -251,6 +235,7 @@ export function authErrorMessage(err) {
     'auth/too-many-requests': 'محاولات كثيرة. انتظر قليلاً ثم حاول مجدداً.',
     'auth/network-request-failed': 'تعذّر الاتصال بالإنترنت.',
     'permission-denied': 'ليست لديك صلاحية. تأكد من إضافة UID حسابك في قواعد الأمان.',
+    'app/not-configured': 'لوحة التحكم غير مفعّلة بعد.',
   };
   return map[err?.code] || 'حدث خطأ غير متوقع. حاول مرة أخرى.';
 }
@@ -259,7 +244,6 @@ export function authErrorMessage(err) {
 /**
  * رفع صورة مع شريط تقدم.
  *  • Cloudinary (موصى به – مجاني 25GB): رفع مباشر من المتصفح عبر Unsigned Preset
- *  • الوضع التجريبي: تحويل الصورة إلى Data URL وحفظها محلياً
  * @returns {Promise<string>} رابط الصورة
  */
 export function uploadImage(file, onProgress = () => {}) {
@@ -281,15 +265,6 @@ export function uploadImage(file, onProgress = () => {}) {
       };
       xhr.onerror = () => reject(new Error('تعذّر الاتصال بخادم الصور'));
       xhr.send(fd);
-    });
-  }
-  if (mode === 'demo') {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
-      reader.onload = () => { onProgress(100); resolve(reader.result); };
-      reader.onerror = () => reject(new Error('تعذّرت قراءة الصورة'));
-      reader.readAsDataURL(file);
     });
   }
   return Promise.reject(new Error('لم يتم إعداد Cloudinary بعد. أضف cloudName و uploadPreset في firebase-config.js'));

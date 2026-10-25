@@ -30,6 +30,16 @@
     <div class="spinner text-ink !w-8 !h-8"></div>
   </div>
 
+  <!-- ======================= لوحة مقفلة (قبل ربط Firebase) ======================= -->
+  <section id="lockedView" class="hidden min-h-screen grid place-items-center p-4">
+    <div class="w-full max-w-sm text-center stat !p-8">
+      <div class="w-14 h-14 rounded-2xl bg-ink inline-grid place-items-center mb-4 text-2xl">🔒</div>
+      <h1 class="text-xl font-extrabold">لوحة التحكم مقفلة</h1>
+      <p class="text-slate-500 text-sm mt-2 leading-relaxed">هذه الصفحة خاصة بصاحب المحل فقط، ولم يتم تفعيلها بعد.</p>
+      <a href="./" class="btn btn-primary mt-6 w-full">العودة إلى المعرض</a>
+    </div>
+  </section>
+
   <!-- ======================= شاشة تسجيل الدخول ======================= -->
   <section id="loginView" class="hidden min-h-screen grid place-items-center p-4">
     <div class="w-full max-w-sm">
@@ -38,15 +48,10 @@
           <svg viewBox="0 0 64 64" class="w-9 h-9"><path d="M20 22l8-4q4 4 8 0l8 4 6 10-6 3-1-2v19H21V33l-1 2-6-3z" fill="#c8932b"/></svg>
         </span>
         <h1 class="text-2xl font-extrabold">لوحة التحكم</h1>
-        <p class="text-slate-500 text-sm mt-1" data-store-name></p>
+        <p class="text-slate-500 text-sm mt-1">خاصة بصاحب المحل فقط</p>
       </div>
 
       <form id="loginForm" class="stat !p-6 space-y-4" novalidate>
-        <div id="demoNotice" class="hidden rounded-xl bg-amber-50 text-amber-900 text-sm p-3 leading-relaxed">
-          <strong>وضع التجربة:</strong> لم يتم ربط Firebase بعد.<br>
-          البريد: <code dir="ltr" class="font-bold">admin@demo.com</code><br>
-          كلمة المرور: <code dir="ltr" class="font-bold">demo1234</code>
-        </div>
         <div>
           <label class="field-label" for="loginEmail">البريد الإلكتروني</label>
           <input id="loginEmail" type="email" class="input" dir="ltr" autocomplete="username" required />
@@ -64,7 +69,7 @@
         <button id="loginBtn" type="submit" class="btn btn-primary w-full !h-12">تسجيل الدخول</button>
         <button id="forgotBtn" type="button" class="w-full text-sm text-slate-500 hover:text-ink font-semibold">نسيت كلمة المرور؟</button>
       </form>
-      <p class="text-center mt-5"><a href="./" class="text-sm text-slate-500 hover:text-ink">← العودة إلى الكتالوج</a></p>
+      <p class="text-center mt-5"><a href="./" class="text-sm text-slate-500 hover:text-ink">← العودة إلى المعرض</a></p>
     </div>
   </section>
 
@@ -79,11 +84,10 @@
           <strong class="block font-extrabold truncate">لوحة التحكم</strong>
           <span id="userEmail" class="block text-xs text-slate-500 truncate" dir="ltr" style="text-align:right"></span>
         </div>
-        <span id="modeBadge" class="badge badge-warn hidden">وضع التجربة</span>
         <div class="ms-auto flex items-center gap-1">
-          <a href="./" target="_blank" class="btn btn-ghost btn-sm" title="عرض الكتالوج">
+          <a href="./" target="_blank" class="btn btn-ghost btn-sm" title="عرض المعرض">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span class="hidden sm:inline">عرض الكتالوج</span>
+            <span class="hidden sm:inline">عرض المعرض</span>
           </a>
           <button id="logoutBtn" class="btn btn-ghost btn-sm" title="تسجيل الخروج">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h12"/></svg>
@@ -95,11 +99,10 @@
 
     <main class="max-w-7xl mx-auto px-4 py-6 space-y-5">
       <!-- الإحصائيات -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="grid grid-cols-3 gap-3">
         <div class="stat"><div class="k">إجمالي المنتجات</div><div class="v" id="stTotal">—</div></div>
         <div class="stat"><div class="k">معروض للزبائن</div><div class="v text-green-700" id="stActive">—</div></div>
         <div class="stat"><div class="k">مخفي</div><div class="v text-slate-400" id="stHidden">—</div></div>
-        <div class="stat"><div class="k">نفد / مخزون منخفض</div><div class="v text-amber-600" id="stLow">—</div></div>
       </div>
 
       <!-- شريط الأدوات -->
@@ -119,7 +122,6 @@
             <option value="all">كل الحالات</option>
             <option value="active">معروض</option>
             <option value="hidden">مخفي</option>
-            <option value="low">مخزون منخفض</option>
           </select>
         </div>
         <div class="flex gap-2">
@@ -142,8 +144,6 @@
               <th class="w-16">صورة</th>
               <th>المنتج</th>
               <th>التصنيف</th>
-              <th>سعر القطعة</th>
-              <th>المخزون (باكيت)</th>
               <th>معروض</th>
               <th class="text-left">إجراءات</th>
             </tr>
@@ -153,16 +153,15 @@
         <div id="tableEmpty" class="hidden text-center py-16">
           <div class="text-4xl mb-2">📭</div>
           <p class="font-bold">لا توجد منتجات</p>
-          <p class="text-sm text-slate-500">ابدأ بإضافة أول منتج للكتالوج.</p>
+          <p class="text-sm text-slate-500">ابدأ بإضافة أول منتج للمعرض.</p>
         </div>
       </div>
-      <p class="text-xs text-slate-400 text-center">💡 عدّل السعر أو المخزون مباشرة من الجدول — يتم الحفظ تلقائياً عند الخروج من الحقل.</p>
     </main>
   </section>
 
   <!-- ======================= نموذج إضافة/تعديل منتج ======================= -->
   <dialog id="productDialog" class="sheet" aria-labelledby="pdTitle">
-    <form id="productForm" class="modal !w-[min(760px,calc(100vw-2rem))]" novalidate>
+    <form id="productForm" class="modal !w-[min(640px,calc(100vw-2rem))]" novalidate>
       <div class="sheet-handle"></div>
       <div class="flex items-center justify-between px-5 sm:px-6 h-16 border-b border-slate-100 shrink-0">
         <h2 id="pdTitle" class="text-lg font-extrabold">منتج جديد</h2>
@@ -184,29 +183,20 @@
           </label>
         </fieldset>
 
-        <!-- البيانات الأساسية -->
+        <!-- البيانات -->
         <div class="grid sm:grid-cols-2 gap-4">
           <div class="sm:col-span-2">
             <label class="field-label" for="fName">اسم الموديل <span class="req">*</span></label>
-            <input id="fName" name="name" class="input" required maxlength="120" placeholder="مثال: قميص كتان كلاسيك" />
+            <input id="fName" name="name" class="input" required maxlength="120" placeholder="مثال: هودي شبابي مطبوع" />
           </div>
-          <div>
-            <label class="field-label" for="fSku">كود الصنف (SKU) <span class="req">*</span></label>
+          <div class="sm:col-span-2">
+            <label class="field-label" for="fSku">كود الصنف <span class="req">*</span></label>
             <div class="flex gap-2">
-              <input id="fSku" name="sku" class="input uppercase" dir="ltr" required maxlength="40" placeholder="MN-1024" />
+              <input id="fSku" name="sku" class="input uppercase" dir="ltr" required maxlength="40" placeholder="SH-1024" />
               <button type="button" id="genSku" class="btn btn-outline btn-icon shrink-0" title="توليد كود تلقائي">
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg>
               </button>
             </div>
-          </div>
-          <div>
-            <label class="field-label" for="fFabric">نوع القماش</label>
-            <input id="fFabric" name="fabric" class="input" maxlength="80" placeholder="قطن 100%" list="fabricList" />
-            <datalist id="fabricList">
-              <option value="قطن 100%"></option><option value="كتان"></option><option value="بوليستر"></option>
-              <option value="شيفون"></option><option value="كريب"></option><option value="جينز"></option>
-              <option value="صوف"></option><option value="مخمل"></option><option value="ليكرا"></option><option value="ستان"></option>
-            </datalist>
           </div>
           <div>
             <label class="field-label" for="fCategory">التصنيف <span class="req">*</span></label>
@@ -224,61 +214,13 @@
               <option value="winter">❄️ شتوي</option>
             </select>
           </div>
-        </div>
-
-        <!-- التسعير والكميات -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <label class="field-label" for="fPrice">سعر القطعة</label>
-            <input id="fPrice" name="price" type="number" inputmode="decimal" min="0" step="0.01" class="input" placeholder="0" />
-            <p class="hint">اتركه 0 = "السعر عند الطلب"</p>
-          </div>
-          <div>
-            <label class="field-label" for="fPack">قطع / باكيت <span class="req">*</span></label>
-            <input id="fPack" name="piecesPerPack" type="number" inputmode="numeric" min="1" step="1" class="input" required value="12" />
-            <p class="hint">مثال: 12 = دستة</p>
-          </div>
-          <div>
-            <label class="field-label" for="fMoq">أقل طلب (MOQ)</label>
-            <input id="fMoq" name="moq" type="number" inputmode="numeric" min="1" step="1" class="input" value="1" />
-            <p class="hint">بالباكيت</p>
-          </div>
-          <div>
-            <label class="field-label" for="fStock">المخزون</label>
-            <input id="fStock" name="stock" type="number" inputmode="numeric" min="0" step="1" class="input" value="10" />
-            <p class="hint">بالباكيت (0 = نفد)</p>
-          </div>
-        </div>
-        <p id="packPreview" class="text-sm bg-sand rounded-xl px-4 py-2.5 -mt-2"></p>
-
-        <!-- المقاسات -->
-        <fieldset>
-          <legend class="field-label">المقاسات المتاحة</legend>
-          <div id="sizePresets" class="space-y-2"></div>
-          <div class="flex gap-2 mt-3">
-            <input id="customSize" class="input !h-9 !w-40 text-sm" placeholder="مقاس مخصص..." />
-            <button type="button" id="addSize" class="btn btn-outline btn-sm">إضافة</button>
-          </div>
-        </fieldset>
-
-        <div class="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label class="field-label" for="fColors">الألوان</label>
-            <input id="fColors" name="colors" class="input" placeholder="أسود، أبيض، كحلي" />
-            <p class="hint">افصل بين الألوان بفاصلة</p>
-          </div>
-          <div class="flex items-center justify-between gap-3 bg-sand rounded-xl px-4 py-3 self-end">
+          <div class="sm:col-span-2 flex items-center justify-between gap-3 bg-sand rounded-xl px-4 py-3">
             <div>
-              <div class="font-bold text-sm">معروض في الكتالوج</div>
-              <div class="hint !mt-0">أوقفه لإخفاء المنتج مؤقتاً</div>
+              <div class="font-bold text-sm">معروض في المعرض</div>
+              <div class="hint !mt-0">أوقفه لإخفاء المنتج عن الزبائن مؤقتاً</div>
             </div>
             <label class="switch"><input id="fActive" name="active" type="checkbox" checked /><span></span></label>
           </div>
-        </div>
-
-        <div>
-          <label class="field-label" for="fDesc">وصف إضافي</label>
-          <textarea id="fDesc" name="description" class="input" rows="3" maxlength="1000" placeholder="تفاصيل الخامة، التشطيب، ملاحظات الشحن..."></textarea>
         </div>
       </div>
 
