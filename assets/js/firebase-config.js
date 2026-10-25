@@ -14,12 +14,12 @@
  */
 
 export const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyCS-THiBHsEx7jmL5C_LZKJgZs5srOfeJw",
+  authDomain: "zintanistore-ecf05.firebaseapp.com",
+  projectId: "zintanistore-ecf05",
+  storageBucket: "zintanistore-ecf05.firebasestorage.app",
+  messagingSenderId: "226373163715",
+  appId: "1:226373163715:web:ed3924ae0b033e24822076",
 };
 
 export const cloudinaryConfig = {

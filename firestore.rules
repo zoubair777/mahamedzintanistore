@@ -6,9 +6,8 @@ rules_version = '2';
 //  • الزبائن: قراءة المنتجات المعروضة فقط (active == true)
 //  • المدير: قراءة وكتابة كل شيء — فقط للحسابات المدرجة UID الخاص بها أدناه
 //
-//  ⚠️ مهم جداً: استبدل PUT_YOUR_ADMIN_UID_HERE بـ UID حسابك
+//  ✅ UID حساب صاحب المحل مضاف أدناه (لإضافة مدير آخر: ['UID1', 'UID2'])
 //  (Firebase Console › Authentication › Users › عمود User UID)
-//  بدون هذه الخطوة، أي شخص يُنشئ حساباً يمكنه التعديل!
 // ============================================================
 
 service cloud.firestore {
@@ -16,7 +15,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return request.auth != null
-        && request.auth.uid in ['PUT_YOUR_ADMIN_UID_HERE'];
+        && request.auth.uid in ['JvpWZ3wvReRZ5GuBabb5PlFKFjj1'];
     }
 
     // التحقق من شكل بيانات المنتج قبل الحفظ

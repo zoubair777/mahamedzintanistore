@@ -96,7 +96,9 @@ function getFiltered() {
 function render() {
   const list = getFiltered();
   $('#grid').innerHTML = list.map((p, i) => cardHTML(p, i)).join('');
-  $('#emptyState').classList.toggle('hidden', list.length > 0);
+  const noProducts = state.products.length === 0;
+  $('#comingSoon').classList.toggle('hidden', !noProducts);
+  $('#emptyState').classList.toggle('hidden', list.length > 0 || noProducts);
 
   const filtered = state.cat !== 'all' || state.season !== 'all' || state.q;
   $('#clearFilters').classList.toggle('hidden', !filtered);
