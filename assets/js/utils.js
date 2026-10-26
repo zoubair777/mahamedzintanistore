@@ -2,6 +2,7 @@
  * utils.js — أدوات مشتركة بين صفحة العرض ولوحة التحكم
  */
 import { storeConfig } from './firebase-config.js';
+import { isStoredImage, resolveImage } from './store.js';
 
 /* ---------- القواميس (التصنيفات والمواسم) ---------- */
 export const CATEGORIES = {
@@ -50,6 +51,34 @@ export const isNew = (p) =>
 export function optimizeImg(url, width = 600) {
   if (!url || !url.includes('res.cloudinary.com') || !url.includes('/upload/')) return url;
   return url.replace('/upload/', `/upload/f_auto,q_auto,c_limit,w_${width}/`);
+}
+
+/* ---------- عرض الصور المحفوظة في Firestore ---------- */
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+
+/** خصائص src لوسم <img>: الصور المحفوظة في Firestore تُحمَّل لاحقاً عبر hydrateImages */
+export function imgAttrs(url, width = 600) {
+  if (isStoredImage(url)) return `src="${BLANK}" data-fsimg="${escapeHtml(url)}" data-small="${width <= 500 ? 1 : 0}"`;
+  return `src="${escapeHtml(optimizeImg(url, width))}"`;
+}
+
+const io = 'IntersectionObserver' in window
+  ? new IntersectionObserver((entries) => entries.forEach((en) => {
+      if (en.isIntersecting) { io.unobserve(en.target); loadImg(en.target); }
+    }), { rootMargin: '400px' })
+  : null;
+
+function loadImg(img) {
+  resolveImage(img.dataset.fsimg, img.dataset.small === '1')
+    .then((src) => { if (src) img.src = src; })
+    .catch((err) => console.error('image load failed', err));
+}
+
+/** تحميل الصور داخل عنصر معيّن (بشكل كسول عند الاقتراب من الشاشة) */
+export function hydrateImages(root = document) {
+  root.querySelectorAll('img[data-fsimg]').forEach((img) => {
+    if (img.dataset.eager === '1' || !io) loadImg(img); else io.observe(img);
+  });
 }
 
 /* ---------- رسائل التنبيه (Toast) ---------- */

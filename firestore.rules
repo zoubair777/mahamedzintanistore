@@ -40,6 +40,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // صور المنتجات (نسخة كاملة + مصغّرة): الجميع يشاهد، والمدير فقط يرفع ويحذف
+    match /images/{imageId} {
+      allow read: if true;
+      allow create: if isAdmin() && request.resource.data.data is string
+        && request.resource.data.data.size() < 1000000;
+      allow delete: if isAdmin();
+    }
+    match /thumbs/{imageId} {
+      allow read: if true;
+      allow create: if isAdmin() && request.resource.data.data is string
+        && request.resource.data.data.size() < 1000000;
+      allow delete: if isAdmin();
+    }
+
     // رفض أي شيء آخر افتراضياً
     match /{document=**} {
       allow read, write: if false;

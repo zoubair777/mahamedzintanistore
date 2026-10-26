@@ -11,7 +11,7 @@ import { storeConfig } from './firebase-config.js';
 import { listProducts, mode } from './store.js';
 import {
   CATEGORIES, SEASONS, escapeHtml as e, formatNumber,
-  normalizeArabic, debounce, isNew, optimizeImg, $, $$,
+  normalizeArabic, debounce, isNew, imgAttrs, hydrateImages, $, $$,
 } from './utils.js';
 
 /* ---------------- الحالة (State) ---------------- */
@@ -96,6 +96,7 @@ function getFiltered() {
 function render() {
   const list = getFiltered();
   $('#grid').innerHTML = list.map((p, i) => cardHTML(p, i)).join('');
+  hydrateImages($('#grid'));
   const noProducts = state.products.length === 0;
   $('#comingSoon').classList.toggle('hidden', !noProducts);
   $('#emptyState').classList.toggle('hidden', list.length > 0 || noProducts);
@@ -117,9 +118,9 @@ function cardHTML(p, i) {
   <article class="card" data-id="${e(p.id)}" style="animation-delay:${Math.min(i, 12) * 30}ms">
     <button class="card-media" data-action="open" aria-label="عرض صور ${e(p.name)}">
       ${img1
-        ? `<img src="${e(optimizeImg(img1, 500))}" alt="${e(p.name)}" loading="${i < 4 ? 'eager' : 'lazy'}" decoding="async" />`
+        ? `<img ${imgAttrs(img1, 500)} alt="${e(p.name)}" loading="${i < 4 ? 'eager' : 'lazy'}" decoding="async" />`
         : '<div class="w-full h-full grid place-items-center text-4xl text-slate-300">👕</div>'}
-      ${img2 ? `<img class="img-2" src="${e(optimizeImg(img2, 500))}" alt="" loading="lazy" decoding="async" />` : ''}
+      ${img2 ? `<img class="img-2" ${imgAttrs(img2, 500)} alt="" loading="lazy" decoding="async" />` : ''}
       ${isNew(p) ? '<span class="badge badge-new absolute top-2 right-2">جديد</span>' : ''}
       ${p.images?.length > 1 ? `<span class="badge badge-dark absolute bottom-2 left-2">${ICON.images} ${p.images.length}</span>` : ''}
     </button>
@@ -255,14 +256,14 @@ function openProduct(id) {
     <div class="gallery-main">
       ${imgs.length ? `
         <div class="gallery-track no-scrollbar" id="pmTrack">
-          ${imgs.map((src, i) => `<img src="${e(optimizeImg(src, 1000))}" alt="${e(p.name)} - صورة ${i + 1}" ${i ? 'loading="lazy"' : ''} />`).join('')}
+          ${imgs.map((src, i) => `<img ${imgAttrs(src, 1000)} ${i ? '' : 'data-eager="1"'} alt="${e(p.name)} - صورة ${i + 1}" />`).join('')}
         </div>
         ${imgs.length > 1 ? `<div class="gallery-dots">${imgs.map((_, i) => `<span class="${i ? '' : 'on'}"></span>`).join('')}</div>` : ''}
       ` : '<div class="w-full h-full grid place-items-center text-6xl text-slate-300">👕</div>'}
       <button class="btn btn-icon absolute top-3 left-3 bg-white/90 shadow" data-close aria-label="إغلاق">${ICON.close}</button>
     </div>
     ${imgs.length > 1 ? `<div class="flex gap-2 px-4 pt-3 md:pb-4 overflow-x-auto no-scrollbar" id="pmThumbs">
-      ${imgs.map((src, i) => `<button class="thumb ${i ? '' : 'on'}" data-i="${i}" aria-label="صورة ${i + 1}"><img src="${e(optimizeImg(src, 160))}" alt="" loading="lazy"/></button>`).join('')}
+      ${imgs.map((src, i) => `<button class="thumb ${i ? '' : 'on'}" data-i="${i}" aria-label="صورة ${i + 1}"><img ${imgAttrs(src, 160)} data-eager="1" alt=""/></button>`).join('')}
     </div>` : ''}
     </div>
     <div class="p-5 sm:p-6 md:self-center">
@@ -296,6 +297,7 @@ function openProduct(id) {
     });
   }
 
+  hydrateImages($('#pmBody'));
   setHashProduct(id);
   const dlg = $('#productModal');
   if (!dlg.open) dlg.showModal();

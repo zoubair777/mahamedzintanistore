@@ -240,32 +240,94 @@ export function authErrorMessage(err) {
   return map[err?.code] || 'حدث خطأ غير متوقع. حاول مرة أخرى.';
 }
 
-/* ---------- رفع الصور ---------- */
+/* ---------- الصور ---------- */
 /**
- * رفع صورة مع شريط تقدم.
- *  • Cloudinary (موصى به – مجاني 25GB): رفع مباشر من المتصفح عبر Unsigned Preset
- * @returns {Promise<string>} رابط الصورة
+ * الصور تُحفظ داخل Firestore نفسها (بدون أي خدمة خارجية) بنسختين:
+ *   • thumbs/{id}  : نسخة صغيرة (~500px) لبطاقات المعرض → تحميل سريع واستهلاك أقل
+ *   • images/{id}  : نسخة كاملة (~1200px) لنافذة المنتج
+ * المنتج يخزّن مرجع الصورة بالشكل "fsimg:<id>".
+ * (إذا تم إعداد Cloudinary لاحقاً، تُرفع الصور إليه بدلاً من ذلك.)
  */
-export function uploadImage(file, onProgress = () => {}) {
-  if (isCloudinaryConfigured) {
-    return new Promise((resolve, reject) => {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('upload_preset', cloudinaryConfig.uploadPreset);
-      if (cloudinaryConfig.folder) fd.append('folder', cloudinaryConfig.folder);
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`);
-      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
-      xhr.onload = () => {
-        try {
-          const res = JSON.parse(xhr.responseText);
-          if (xhr.status >= 200 && xhr.status < 300 && res.secure_url) resolve(res.secure_url);
-          else reject(new Error(res.error?.message || 'فشل رفع الصورة'));
-        } catch { reject(new Error('استجابة غير صالحة من خادم الصور')); }
-      };
-      xhr.onerror = () => reject(new Error('تعذّر الاتصال بخادم الصور'));
-      xhr.send(fd);
-    });
+const IMG_PREFIX = 'fsimg:';
+export const isStoredImage = (u) => typeof u === 'string' && u.startsWith(IMG_PREFIX);
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = () => reject(new Error('تعذّرت قراءة الصورة'));
+  r.readAsDataURL(blob);
+});
+
+// حد Firestore للمستند الواحد 1MB — نترك هامشاً للأمان
+const MAX_DATA_URL = 950_000;
+
+/**
+ * رفع صورة.
+ * @param {{ full: Blob, thumb: Blob }} files النسخة الكاملة والمصغّرة (مضغوطتان مسبقاً)
+ * @returns {Promise<string>} مرجع الصورة
+ */
+export async function uploadImage({ full, thumb }, onProgress = () => {}) {
+  if (isCloudinaryConfigured) return uploadToCloudinary(full, onProgress);
+  if (mode !== 'firebase') throw new Error('لوحة التحكم غير مفعّلة بعد.');
+
+  onProgress(5);
+  const [fullData, thumbData] = await Promise.all([blobToDataUrl(full), blobToDataUrl(thumb)]);
+  if (fullData.length > MAX_DATA_URL || thumbData.length > MAX_DATA_URL) throw new Error('الصورة كبيرة جداً، جرّب صورة أخرى.');
+  onProgress(30);
+
+  const { db, fs } = await getDb();
+  const ref = fs.doc(fs.collection(db, 'images'));
+  await fs.setDoc(fs.doc(db, 'thumbs', ref.id), { data: thumbData, createdAt: fs.serverTimestamp() });
+  onProgress(60);
+  await fs.setDoc(ref, { data: fullData, createdAt: fs.serverTimestamp() });
+  onProgress(100);
+  return IMG_PREFIX + ref.id;
+}
+
+const imgCache = new Map();
+/** تحويل مرجع الصورة إلى رابط قابل للعرض. small=true للنسخة المصغّرة */
+export function resolveImage(u, small = false) {
+  if (!isStoredImage(u)) return Promise.resolve(u);
+  const key = `${small ? 't' : 'f'}:${u}`;
+  if (!imgCache.has(key)) {
+    imgCache.set(key, (async () => {
+      const { db, fs } = await getDb();
+      const snap = await fs.getDoc(fs.doc(db, small ? 'thumbs' : 'images', u.slice(IMG_PREFIX.length)));
+      return snap.exists() ? snap.data().data : '';
+    })().catch((err) => { imgCache.delete(key); throw err; }));
   }
-  return Promise.reject(new Error('لم يتم إعداد Cloudinary بعد. أضف cloudName و uploadPreset في firebase-config.js'));
+  return imgCache.get(key);
+}
+
+/** حذف صور محفوظة في Firestore (تُتجاهل روابط Cloudinary) */
+export async function deleteImages(urls = []) {
+  const ids = urls.filter(isStoredImage).map((u) => u.slice(IMG_PREFIX.length));
+  if (!ids.length || mode !== 'firebase') return;
+  const { db, fs } = await getDb();
+  await Promise.all(ids.flatMap((id) => [
+    fs.deleteDoc(fs.doc(db, 'images', id)),
+    fs.deleteDoc(fs.doc(db, 'thumbs', id)),
+  ]));
+}
+
+/* رفع مباشر من المتصفح إلى Cloudinary عبر Unsigned Preset (اختياري) */
+function uploadToCloudinary(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', cloudinaryConfig.uploadPreset);
+    if (cloudinaryConfig.folder) fd.append('folder', cloudinaryConfig.folder);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
+    xhr.onload = () => {
+      try {
+        const res = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300 && res.secure_url) resolve(res.secure_url);
+        else reject(new Error(res.error?.message || 'فشل رفع الصورة'));
+      } catch { reject(new Error('استجابة غير صالحة من خادم الصور')); }
+    };
+    xhr.onerror = () => reject(new Error('تعذّر الاتصال بخادم الصور'));
+    xhr.send(fd);
+  });
 }

@@ -9,11 +9,11 @@
  */
 import {
   mode, listProducts, addProduct, updateProduct, deleteProduct, sanitizeProduct,
-  signIn, signOut, onAuthChange, sendPasswordReset, authErrorMessage, uploadImage,
+  signIn, signOut, onAuthChange, sendPasswordReset, authErrorMessage, uploadImage, deleteImages,
 } from './store.js';
 import {
   CATEGORIES, SEASONS, escapeHtml as e, formatNumber,
-  normalizeArabic, debounce, optimizeImg, toast, compressImage, $, $$,
+  normalizeArabic, debounce, imgAttrs, hydrateImages, toast, compressImage, $, $$,
 } from './utils.js';
 
 /* ---------------- الحالة ---------------- */
@@ -21,6 +21,7 @@ let products = [];
 let editingId = null;         // null = منتج جديد
 let formImages = [];          // [{ key, url, preview, progress, status: 'done'|'uploading'|'error' }]
 let formDirty = false;
+let sessionUploads = [];      // صور رُفعت أثناء فتح النموذج الحالي (تُحذف إن أُلغي الحفظ)
 const MAX_IMAGES = 10;
 
 const ICON = {
@@ -157,7 +158,7 @@ function renderTable() {
     <tr data-id="${e(p.id)}" class="${p.active === false ? 'is-hidden' : ''}">
       <td data-col="img">
         ${p.images?.[0]
-          ? `<img class="thumb-sm" src="${e(optimizeImg(p.images[0], 120))}" alt="" loading="lazy" />`
+          ? `<img class="thumb-sm" ${imgAttrs(p.images[0], 120)} alt="" />`
           : '<div class="thumb-sm grid place-items-center text-xl">👕</div>'}
       </td>
       <td data-col="name">
@@ -183,6 +184,7 @@ function renderTable() {
         <button class="btn btn-ghost btn-sm btn-icon text-red-600" data-act="del" title="حذف">${ICON.trash}</button>
       </td>
     </tr>`).join('');
+  hydrateImages($('#tbody'));
 }
 
 function bindApp() {
@@ -229,7 +231,14 @@ function bindApp() {
       else if (ev.target === dlg) requestClose(dlg);
     });
     dlg.addEventListener('cancel', (ev) => { ev.preventDefault(); requestClose(dlg); }); // زر Esc
-    dlg.addEventListener('close', () => document.body.classList.remove('modal-open'));
+    dlg.addEventListener('close', () => {
+      document.body.classList.remove('modal-open');
+      // صور رُفعت ثم أُغلق النموذج بدون حفظ → نحذفها حتى لا تشغل المساحة
+      if (dlg.id === 'productDialog' && sessionUploads.length) {
+        deleteImages(sessionUploads).catch(console.error);
+        sessionUploads = [];
+      }
+    });
   });
 }
 
@@ -256,6 +265,7 @@ function confirmDelete(p) {
     try {
       await deleteProduct(p.id);
       products = products.filter((x) => x.id !== p.id);
+      deleteImages(unusedImages(p.images, p.id)).catch(console.error);
       renderAll();
       dlg.close();
       toast('تم حذف المنتج', 'success');
@@ -295,7 +305,8 @@ function openForm(p = null, { duplicate = false } = {}) {
   $('#fSeason').value = d.season || 'all';
   $('#fActive').checked = d.active !== false;
 
-  formImages = (d.images || []).map((url) => ({ key: uid(), url, preview: url, progress: 100, status: 'done' }));
+  formImages = (d.images || []).map((url) => ({ key: uid(), url, preview: null, progress: 100, status: 'done' }));
+  sessionUploads = [];
   if (!editingId && !$('#fSku').value) $('#fSku').value = generateSku($('#fCategory').value);
 
   renderImages();
@@ -317,7 +328,7 @@ function generateSku(cat) {
 function renderImages() {
   $('#imgGrid').innerHTML = formImages.map((img, i) => `
     <div class="img-tile ${img.status}" data-key="${img.key}">
-      <img src="${e(img.status === 'done' ? optimizeImg(img.preview, 300) : img.preview)}" alt="" />
+      <img ${img.preview ? `src="${e(img.preview)}"` : `${imgAttrs(img.url, 300)} data-eager="1"`} alt="" />
       <div class="tile-actions">
         <button type="button" data-img="remove" title="حذف الصورة" class="text-red-600">${ICON.x}</button>
         ${i > 0 && img.status === 'done' ? `<button type="button" data-img="cover" title="اجعلها صورة الغلاف">${ICON.star}</button>` : ''}
@@ -327,6 +338,7 @@ function renderImages() {
       ${img.status === 'error' ? '<div class="absolute inset-0 grid place-items-center"><span class="badge badge-danger">فشل الرفع</span></div>' : ''}
     </div>`).join('');
   $('#dropzone').classList.toggle('hidden', formImages.length >= MAX_IMAGES);
+  hydrateImages($('#imgGrid'));
 }
 
 async function handleFiles(fileList) {
@@ -341,8 +353,8 @@ async function handleFiles(fileList) {
     formImages.push(entry);
     renderImages();
     try {
-      const compressed = await compressImage(file);
-      entry.url = await uploadImage(compressed, (pct) => {
+      const prepared = await prepareImage(file);
+      entry.url = await uploadImage(prepared, (pct) => {
         entry.progress = pct;
         const tile = $(`.img-tile[data-key="${entry.key}"]`);
         if (tile) {
@@ -351,9 +363,8 @@ async function handleFiles(fileList) {
           if (label) label.textContent = `${pct}%`;
         }
       });
-      URL.revokeObjectURL(entry.preview);
-      entry.preview = entry.url;
-      entry.status = 'done';
+      sessionUploads.push(entry.url);
+      entry.status = 'done'; // نُبقي المعاينة المحلية (blob) للعرض الفوري
     } catch (err) {
       console.error(err);
       entry.status = 'error';
@@ -414,6 +425,7 @@ async function onSubmit(ev) {
 
   // نحافظ على أي بيانات قديمة للمنتج (مثل الوصف) ونحدّث الحقول المعروضة فقط
   const existing = products.find((p) => p.id === editingId) || {};
+  const previousImages = [...(existing.images || [])];
   const data = sanitizeProduct({
     ...existing,
     name, sku, images,
@@ -432,6 +444,10 @@ async function onSubmit(ev) {
       products.unshift(await addProduct(data));
       toast('تمت إضافة المنتج إلى المعرض ✓', 'success');
     }
+    // الصور التي أزيلت من المنتج (أو رُفعت ثم حُذفت قبل الحفظ) لم تعد مستخدمة → حذفها
+    const removed = [...previousImages, ...sessionUploads].filter((u) => !images.includes(u));
+    sessionUploads = [];
+    deleteImages(unusedImages(removed, editingId)).catch(console.error);
     formDirty = false;
     $('#productDialog').close();
     renderAll();
@@ -444,6 +460,28 @@ async function onSubmit(ev) {
 }
 
 /* ---------------- أدوات ---------------- */
+/** نسخة كاملة (~1200px) ونسخة مصغّرة (~500px) لكل صورة، بحجم مناسب للتخزين */
+async function prepareImage(file) {
+  const fit = async (steps) => {
+    for (const [size, q] of steps) {
+      const f = await compressImage(file, size, q);
+      if (f.size <= 650_000) return f;
+    }
+    throw new Error('الصورة كبيرة جداً، جرّب صورة أخرى.');
+  };
+  const [full, thumb] = await Promise.all([
+    fit([[1200, 0.82], [1000, 0.75], [800, 0.68], [640, 0.6]]),
+    fit([[500, 0.72], [400, 0.65]]),
+  ]);
+  return { full, thumb };
+}
+
+/** الصور غير المستخدمة في أي منتج آخر (المنتجات المنسوخة تتشارك نفس الصور) */
+function unusedImages(urls = [], exceptId = null) {
+  const used = new Set(products.filter((p) => p.id !== exceptId).flatMap((p) => p.images || []));
+  return urls.filter((u) => !used.has(u));
+}
+
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
 function setBusy(btn, busy, label) {

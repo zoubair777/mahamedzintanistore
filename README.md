@@ -85,26 +85,13 @@ wholesale-catalog/
 
 > ⚠️ **لماذا هذا مهم؟** مفاتيح Firebase تظهر في كود الموقع (وهذا طبيعي وآمن). الحماية الحقيقية هي هذه القواعد: الزبائن يقرؤون المنتجات المعروضة فقط، والكتابة مسموحة **حصرياً** لحسابك.
 
-### الخطوة 5: إعداد Cloudinary لرفع الصور (مجاني 25GB)
+### الخطوة 5: الصور (لا تحتاج أي إعداد)
 
-> لماذا Cloudinary وليس Firebase Storage؟ منذ أواخر 2024، يتطلب Firebase Storage للمشاريع الجديدة تفعيل خطة Blaze (الدفع حسب الاستخدام وبطاقة ائتمان). Cloudinary مجاني بدون بطاقة، ويحسّن الصور تلقائياً (WebP/AVIF، تغيير المقاس) فيصبح الموقع أسرع.
+الصور تُحفظ داخل Firestore نفسها بنسختين (كاملة ~1200px ومصغّرة ~500px للبطاقات)، وتُضغط تلقائياً في المتصفح قبل الرفع.
+لا حاجة لأي حساب إضافي، والحماية بنفس قواعد الأمان (المدير فقط يرفع ويحذف).
+عند حذف منتج أو إزالة صورة منه تُحذف الصورة من قاعدة البيانات تلقائياً.
 
-1. سجّل في [cloudinary.com](https://cloudinary.com/users/register_free) (الخطة المجانية).
-2. من **Dashboard** انسخ **Cloud name**.
-3. اذهب إلى **Settings (⚙️) › Upload › Upload presets** ← **Add upload preset**:
-   - **Signing mode:** `Unsigned`
-   - **Preset name:** مثلاً `catalog_unsigned`
-   - **Folder:** `catalog`
-   - (موصى به) في **Upload Control / Restrictions**: حدّد **Allowed formats** = `jpg, png, webp` و **Max file size** = `5MB`.
-   - **Save**.
-4. في `firebase-config.js`:
-   ```js
-   export const cloudinaryConfig = {
-     cloudName: "dxyz123ab",
-     uploadPreset: "catalog_unsigned",
-     folder: "catalog",
-   };
-   ```
+> اختياري: يمكن استخدام Cloudinary بدلاً من ذلك بتعبئة `cloudinaryConfig` في `firebase-config.js` (الخدمة غير متاحة في بعض الدول).
 
 ### الخطوة 6: بيانات متجرك
 
